@@ -171,11 +171,18 @@ class ChatConsumer(WebsocketConsumer):
         elif action == "delete":
             message_id = data.get("message_id")
 
-            Message.objects.filter(
-                id=message_id,
-                sender=self.user
-            ).delete()
+            try:
+                msg = Message.objects.get(
+                    id=message_id,
+                    sender=self.user
+                )
+            except Message.DoesNotExist:
+                return
 
+            receiver = msg.receiver
+            msg.delete()
+
+            
             async_to_sync(self.channel_layer.group_send)(
                 self.room_group,
                 {
@@ -184,7 +191,15 @@ class ChatConsumer(WebsocketConsumer):
                 }
             )
 
-    
+            
+            async_to_sync(self.channel_layer.group_send)(
+                f"user_{receiver.id}",
+                {
+                    "type": "unread_update",
+                    "sender_id": self.user.id,
+                }
+            )
+            
 
     def chat_message(self, event):
         self.send(text_data=json.dumps({
