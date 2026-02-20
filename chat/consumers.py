@@ -235,3 +235,10 @@ class ChatConsumer(WebsocketConsumer):
             "is_online": event["is_online"],
             "last_seen": event.get("last_seen"),
         }))
+
+    def new_user_event(self, event):
+        self.send(text_data=json.dumps({
+            "type": "new_user",
+            "user_id": event["user_id"],
+            "username": event["username"],
+        }))    

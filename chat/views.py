@@ -16,10 +16,19 @@ def register_view(request):
         if form.is_valid():
             user = form.save()
             login(request, user)
-
             user.is_online = True
             user.last_seen = timezone.now()
             user.save()
+            
+            channel_layer = get_channel_layer()
+            async_to_sync(channel_layer.group_send)(
+                "online_users",
+                {
+                    "type": "new_user_event",
+                    "user_id": user.id,
+                    "username": user.username,
+                }
+            )
 
             return redirect('user_list')
 
