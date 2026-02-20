@@ -28,6 +28,10 @@ DEBUG = os.getenv("DEBUG") == "True"
 
 ALLOWED_HOSTS = os.getenv("ALLOWED_HOSTS", "").split(",")
 
+CSRF_TRUSTED_ORIGINS = [
+    "https://chat-app-2mps.onrender.com",
+]
+
 
 
 INSTALLED_APPS = [
