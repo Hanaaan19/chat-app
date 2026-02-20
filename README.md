@@ -22,7 +22,7 @@ The project follows Django's MVT (Model-View-Template) architecture and uses SQL
 
 1. Clone this repository:
 
-   git clone https://github.com/your-username/chat-app.git
+   git clone https://github.com/Hanaaan19/chat-app.git
 
 2. Go inside the project folder:
 
