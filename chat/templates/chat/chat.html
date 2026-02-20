@@ -1,0 +1,327 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Chat</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+
+    <style>
+        .chat-box {
+            height: 400px;
+            overflow-y: auto;
+            background: #f8f9fa;
+            padding: 15px;
+        }
+        .message {
+            margin-bottom: 10px;
+        }
+        .sent {
+            text-align: right;
+        }
+        .received {
+            text-align: left;
+        }
+        .bubble {
+            display: inline-block;
+            padding: 10px 15px;
+            border-radius: 15px;
+            max-width: 70%;
+            position: relative;
+        }
+        .bubble.sent {
+            background: linear-gradient(135deg, #0d6efd, #4dabf7);
+            color: white;
+        }
+        .bubble.received {
+            background: #e9ecef;
+        }
+
+        .tick i {
+                font-size: 14px;
+        }
+
+        .tick.read i {
+                color: #1b8432;
+        }
+
+        .avatar {
+            width: 35px;
+            height: 35px;
+            border-radius: 50%;
+            background-color: #0d6efd;
+            color: white;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            margin-right: 8px;
+        }
+
+        .avatar.received-avatar {
+            background-color: #6c757d;
+        }
+
+        .message-row {
+            display: flex;
+            align-items: flex-end;
+        }
+
+        .sent-row {
+            justify-content: flex-end;
+        }
+
+        
+        .time {
+            font-size: 10px;
+            opacity: 0.7;
+            margin-top: 4px;
+        }
+
+        
+        .dot {
+            height: 5px;
+            width: 5px;
+            margin-left: 3px;
+            background-color: gray;
+            border-radius: 50%;
+            display: inline-block;
+            animation: blink 1.4s infinite both;
+        }
+
+        .dot:nth-child(2) { animation-delay: .2s; }
+        .dot:nth-child(3) { animation-delay: .4s; }
+
+        @keyframes blink {
+            0% { opacity: .2; }
+            20% { opacity: 1; }
+            100% { opacity: .2; }
+        }
+    </style>
+</head>
+
+<body class="bg-light">
+
+<div class="container mt-5">
+    <div class="card shadow">
+
+        
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <div class="d-flex align-items-center">
+                <div class="avatar received-avatar">
+                    {{ other_user.username|first|upper }}
+                </div>
+                <h5 class="mb-0">{{ other_user.username }}</h5>
+            </div>
+            <a href="{% url 'user_list' %}" class="btn btn-secondary btn-sm">Back</a>
+        </div>
+
+        <div id="messages" class="chat-box">
+
+            {% for message in messages %}
+                {% if message.sender == request.user %}
+                    <div class="message sent message-row sent-row" data-id="{{ message.id }}">
+                        <div class="bubble sent">
+                            {{ message.content }}
+
+                            
+                            <div class="time">
+                                {{ message.timestamp|date:"h:i A" }}
+                            </div>
+
+                            <button 
+                                data-id="{{ message.id }}" 
+                                onclick="deleteMessage(this.dataset.id)"
+                                style="border:none;background:none;color:white;margin-left:5px;">
+                                <i class="bi bi-trash"></i>
+                            </button>
+
+                            <span class="tick {% if message.is_read %}read{% endif %}">
+                                {% if message.is_read %}
+                                    <i class="bi bi-check-all"></i>
+                                {% else %}
+                                    <i class="bi bi-check"></i>
+                                {% endif %}
+                            </span>
+                        </div>
+                    </div>
+                {% else %}
+                    <div class="message received message-row" data-id="{{ message.id }}">
+                        
+                        <div class="avatar received-avatar">
+                            {{ other_user.username|first|upper }}
+                        </div>
+
+                        <div class="bubble received">
+                            {{ message.content }}
+
+                            
+                            <div class="time">
+                                {{ message.timestamp|date:"h:i A" }}
+                            </div>
+                        </div>
+                    </div>
+                {% endif %}
+            {% endfor %}
+
+        </div>
+
+        
+        <div id="typingIndicator" class="px-3" style="display:none;">
+            <span class="text-muted small">
+                typing
+                <span class="dot"></span>
+                <span class="dot"></span>
+                <span class="dot"></span>
+            </span>
+        </div>
+
+        <div class="card-footer">
+            <div class="input-group">
+                <input id="messageInput" type="text" class="form-control" placeholder="Type message...">
+                <button onclick="sendMessage()" class="btn btn-primary">Send</button>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+
+<script>
+const roomName = "{{ room_name }}";
+const receiverId = parseInt("{{ other_user.id }}");
+const currentUserId = parseInt("{{ request.user.id }}");
+
+const socket = new WebSocket(
+    (window.location.protocol === "https:" ? "wss://" : "ws://") +
+    window.location.host +
+    "/ws/chat/" + roomName + "/"
+);
+
+const messageBox = document.getElementById("messages");
+const input = document.getElementById("messageInput");
+const typingIndicator = document.getElementById("typingIndicator");
+let isTyping = false;
+let typingTimer = null;
+
+
+function smoothScroll() {
+    messageBox.scrollTo({
+        top: messageBox.scrollHeight,
+        behavior: "smooth"
+    });
+}
+
+smoothScroll();
+
+socket.onmessage = function(e) {
+    const data = JSON.parse(e.data);
+
+    if (data.type === "message") {
+
+        const senderId = parseInt(data.sender_id);
+        const alignment = senderId === currentUserId ? "sent" : "received";
+
+        const wrapper = document.createElement("div");
+        wrapper.className = `message ${alignment}`;
+        wrapper.setAttribute("data-id", data.message_id);
+
+        let contentHTML = `
+            <div class="bubble ${alignment}">
+                ${data.message}
+                <div class="time">
+                    ${new Date().toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'})}
+                </div>
+        `;
+
+        if (alignment === "sent") {
+            contentHTML += `
+                <button onclick="deleteMessage(${data.message_id})"
+                    style="border:none;background:none;color:white;margin-left:5px;">
+                    <i class="bi bi-trash"></i>
+                </button>
+                <span class="tick"><i class="bi bi-check"></i></span>
+            `;
+        }
+
+        contentHTML += `</div>`;
+        wrapper.innerHTML = contentHTML;
+
+        messageBox.appendChild(wrapper);
+        smoothScroll();
+
+        if (senderId !== currentUserId) {
+            socket.send(JSON.stringify({
+                action: "read",
+                message_ids: [data.message_id]
+            }));
+        }
+    }
+
+    if (data.type === "typing" && parseInt(data.sender_id) !== currentUserId) {
+        if (data.is_typing) {
+            typingIndicator.style.display = "block";
+        } else {
+            typingIndicator.style.display = "none";
+        }
+    }
+
+    if (data.type === "read") {
+        data.message_ids.forEach(id => {
+            const msgDiv = document.querySelector(`[data-id='${id}'] .tick`);
+            if (msgDiv) {
+                msgDiv.innerHTML = '<i class="bi bi-check-all"></i>';
+                msgDiv.classList.add("read");
+            }
+        });
+    }
+
+    if (data.type === "delete") {
+        const msgDiv = document.querySelector(`[data-id='${data.message_id}']`);
+        if (msgDiv) msgDiv.remove();
+    }
+};
+
+function sendMessage() {
+    const message = input.value.trim();
+    if (!message) return;
+
+    socket.send(JSON.stringify({
+        action: "message",
+        message: message,
+        receiver_id: receiverId
+    }));
+
+    input.value = "";
+}
+
+function deleteMessage(id) {
+    socket.send(JSON.stringify({
+        action: "delete",
+        message_id: id
+    }));
+}
+
+input.addEventListener("input", function() {
+
+    if (!isTyping) {
+        isTyping = true;
+
+        socket.send(JSON.stringify({
+            action: "typing_start"
+        }));
+    }
+
+    clearTimeout(typingTimer);
+
+    typingTimer = setTimeout(function() {
+        isTyping = false;
+
+        socket.send(JSON.stringify({
+            action: "typing_stop"
+        }));
+    }, 1000);
+});
+</script>
+
+</body>
+</html>

@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>User List</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+</head>
+
+<body class="bg-light">
+
+<div class="container mt-5">
+    <div class="card shadow">
+
+        <div class="card-header d-flex justify-content-between align-items-center">
+            <h4 class="mb-0">Users</h4>
+            <a href="{% url 'logout' %}" class="btn btn-danger btn-sm">
+                Logout
+            </a>
+        </div>
+
+        <div class="card-body">
+
+            {% for data in user_data %}
+                <div class="d-flex justify-content-between align-items-center border-bottom py-2"
+                     data-user-id="{{ data.user.id }}"
+                     data-last-seen="{{ data.user.last_seen|date:'Y-m-d H:i:s' }}">
+
+                    <div>
+                        <strong>{{ data.user.username }}</strong>
+
+                        <span class="badge ms-2 status-badge
+                            {% if data.user.is_online %}
+                                bg-success
+                            {% else %}
+                                bg-secondary
+                            {% endif %}">
+
+                            {% if data.user.is_online %}
+                                Online
+                            {% else %}
+                                Last seen loading...
+                            {% endif %}
+                        </span>
+
+                        
+                        <span class="badge bg-danger ms-2 unread-badge"
+                              {% if data.unread_count == 0 %}
+                                  style="display:none;"
+                              {% endif %}>
+                            {{ data.unread_count }}
+                        </span>
+
+                    </div>
+
+                    <a href="{% url 'chat' data.user.id %}" 
+                       class="btn btn-primary btn-sm">
+                        Chat
+                    </a>
+
+                </div>
+            {% empty %}
+                <p class="text-muted text-center">
+                    No Users Available
+                </p>
+            {% endfor %}
+
+        </div>
+    </div>
+</div>
+
+<script>
+
+
+const socket = new WebSocket(
+    (window.location.protocol === "https:" ? "wss://" : "ws://") +
+    window.location.host +
+    "/ws/chat/global/"
+);
+
+
+
+function formatLastSeen(lastSeenString) {
+
+    if (!lastSeenString) return "Last seen not available";
+
+    const lastSeen = new Date(lastSeenString);
+    const now = new Date();
+
+    const diffSeconds = Math.floor((now - lastSeen) / 1000);
+
+    if (diffSeconds < 60) {
+        return "Last seen just now";
+    }
+
+    else if (diffSeconds < 3600) {
+        const mins = Math.floor(diffSeconds / 60);
+        return "Last seen " + mins + (mins === 1 ? " min ago" : " mins ago");
+    }
+
+    else if (diffSeconds < 86400) {
+        const hrs = Math.floor(diffSeconds / 3600);
+        return "Last seen " + hrs + (hrs === 1 ? " hour ago" : " hours ago");
+    }
+
+    else {
+        return "Last seen on " + lastSeen.toLocaleString();
+    }
+}
+
+
+document.querySelectorAll("[data-user-id]").forEach(function(row) {
+
+    const badge = row.querySelector(".status-badge");
+    const lastSeen = row.getAttribute("data-last-seen");
+
+    if (!badge.classList.contains("bg-success")) {
+        badge.innerText = formatLastSeen(lastSeen);
+    }
+});
+
+
+
+socket.onmessage = function(e) {
+
+    const data = JSON.parse(e.data);
+
+    if (data.type === "user_status") {
+
+        const row = document.querySelector(
+            `[data-user-id='${data.user_id}']`
+        );
+
+        if (!row) return;
+
+        const badge = row.querySelector(".status-badge");
+
+        if (data.is_online) {
+            badge.className = "badge bg-success ms-2 status-badge";
+            badge.innerText = "Online";
+        } 
+        else {
+            badge.className = "badge bg-secondary ms-2 status-badge";
+
+            if (data.last_seen) {
+                row.setAttribute("data-last-seen", data.last_seen);
+                badge.innerText = formatLastSeen(data.last_seen);
+            }
+        }
+    }
+
+    
+    if (data.type === "unread_update") {
+
+        const row = document.querySelector(
+            `[data-user-id='${data.sender_id}']`
+        );
+
+        if (!row) return;
+
+        const badge = row.querySelector(".unread-badge");
+
+        if (data.unread_count > 0) {
+            badge.innerText = data.unread_count;
+            badge.style.display = "inline-block";
+        } else {
+            badge.style.display = "none";
+        }
+    }
+};
+
+setInterval(function() {
+
+    document.querySelectorAll("[data-user-id]").forEach(function(row) {
+
+        const badge = row.querySelector(".status-badge");
+
+        
+        if (badge.classList.contains("bg-success")) return;
+
+        const lastSeen = row.getAttribute("data-last-seen");
+
+        if (lastSeen) {
+            badge.innerText = formatLastSeen(lastSeen);
+        }
+
+    });
+
+}, 60000);
+
+</script>
+
+</body>
+</html>
